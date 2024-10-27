@@ -1,0 +1,8 @@
+GET        /api/v1/batch/generate-candidates        controllers.batches.GenerateBatchesController.generateCandidates
+GET        /api/v1/batch/generate-voters            controllers.batches.GenerateBatchesController.generateVoters
+
+GET        /api/v1/send-voters                      controllers.MainController.sendVoterMessagesStream
+GET        /api/v1/voting                           controllers.MainController.voting
+
+GET        /stream                                  controllers.MainController.stream
+GET        /index                                  controllers.MainController.index

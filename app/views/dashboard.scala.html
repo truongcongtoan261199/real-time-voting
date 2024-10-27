@@ -1,0 +1,246 @@
+@import play.api.libs.json.Json
+@(
+        votersCount: Int,
+        candidatesCount: Int,
+        topCandidates: Seq[(String, Int, String, String)],
+        topPercentCandidates: Seq[(String, Double)],
+        leadingCandidate: (String, Int, String, String),
+        turnOutByLocations: Seq[(String, Int)],
+        lastUpdateTime: String)
+
+    @main("Election Dashboard") {
+        <div>
+            <h1>Real-time Election Dashboard</h1>
+            <div style="display: flex;
+                gap: 50px">
+                <h3>Total Voters: @votersCount</h3>
+                <h3>Total Candidates: @candidatesCount</h3>
+            </div>
+            <hr/>
+            <div>
+                <h4>Leading Candidate</h4>
+                <div class="row">
+                    <div class="col-6">
+                        <img src="@leadingCandidate._3" alt="@leadingCandidate._1" width="200"/>
+                    </div>
+                    <div class="col-6">
+                        <h3>@leadingCandidate._1</h3>
+                        <h4>@leadingCandidate._4</h4>
+                        <h5>Total Votes: @leadingCandidate._2</h5>
+                    </div>
+                </div>
+            </div>
+            <hr/>
+            <div style="display: flex;
+                justify-content: space-between;">
+                <div style="width: 45%;">
+                    <h4>Vote Counts per Candidate</h4>
+                    <canvas id="barChart"></canvas>
+                </div>
+                <div style="width: 45%;">
+                    <h4>Candidates Votes</h4>
+                    <canvas id="pieChart"></canvas>
+                </div>
+            </div>
+            <hr/>
+
+            <h3>Location of Voters</h3>
+            <table class="table table-bordered" id="voterTable">
+                <thead>
+                    <tr>
+                        <th>State</th>
+                        <th>Total Turnout</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @for((state, count) <- turnOutByLocations) {
+                    <tr>
+                        <td>@state</td>
+                        <td>@count</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+
+            <div id="pagination"></div>
+
+            <hr/>
+
+            <div class="sidebar">
+                <h4>Control Panel</h4>
+
+                    <!-- Slider for refresh interval -->
+                <label for="refreshInterval">Refresh interval (seconds)</label>
+                <input type="range" id="refreshInterval" name="refreshInterval" min="5" max="60" value="10" step="1"
+                onchange="updateRefreshInterval(this.value)">
+                <span id="intervalValue">10 seconds</span>
+
+                <button id="refreshDataButton" onclick="refreshData()">Refresh Data</button>
+            </div>
+
+            <hr/>
+
+            <div>
+                <p>Last updated: @lastUpdateTime</p>
+            </div>
+
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@@2"></script>
+
+            <script type="text/javascript">
+
+                    var candidateNames = @Html(Json.stringify(Json.toJson(topCandidates.map(_._1))));
+                    var voteCounts = @Html(Json.stringify(Json.toJson(topCandidates.map(_._2))));
+
+                    // Tạo bar chart
+                    var ctxBar = document.getElementById('barChart').getContext('2d');
+                    var barChart = new Chart(ctxBar, {
+                        type: 'bar',
+                        data: {
+                            labels: candidateNames,
+                            datasets: [{
+                                label: 'Total Votes',
+                                data: voteCounts,
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            scales: {
+                                y: {
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+
+                    var candidateName = @Html(Json.stringify(Json.toJson(topPercentCandidates.map(_._1))));
+                    var percentage = @Html(Json.stringify(Json.toJson(topPercentCandidates.map(_._2))));
+
+                    var ctxPie = document.getElementById('pieChart').getContext('2d');
+                    var pieChart = new Chart(ctxPie, {
+                        type: 'pie',
+                        data: {
+                            labels: candidateName,
+                            datasets: [{
+                                label: 'Votes by Location',
+                                data: percentage,
+                                backgroundColor: [
+                                    'rgba(54, 162, 235, 0.8)',
+                                    'rgba(34, 139, 34, 0.8)',
+                                    'rgba(255, 140, 0, 0.8)'
+                                ],
+                                borderColor: [
+                                    'rgba(54, 162, 235, 1)',
+                                    'rgba(34, 139, 34, 1)',
+                                    'rgba(255, 140, 0, 1)'
+                                ],
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            plugins: {
+                                datalabels: {
+                                    formatter: (value, context) => {
+                                        let sum = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                        return (value / sum * 100).toFixed(2) + "%";
+                                    },
+                                    color: '#fff',
+                                    font: {
+                                        weight: 'bold'
+                                    }
+                                }
+                            }
+                        },
+                        plugins: [ChartDataLabels]
+                    });
+
+                    document.addEventListener("DOMContentLoaded", function () {
+                        var table = document.getElementById("voterTable");
+                        var rows = table.getElementsByTagName("tbody")[0].getElementsByTagName("tr");
+                        var rowsPerPage = 20;
+                        var currentPage = 1;
+                        var totalPages = Math.ceil(rows.length / rowsPerPage);
+
+                        function displayRows(page) {
+                            var start = (page - 1) * rowsPerPage;
+                            var end = start + rowsPerPage;
+                            for (var i = 0; i < rows.length; i++) {
+                                if (i >= start && i < end) {
+                                    rows[i].style.display = "";
+                                } else {
+                                    rows[i].style.display = "none";
+                                }
+                            }
+                        }
+
+                        function createPagination() {
+                            var pagination = document.getElementById("pagination");
+                            pagination.innerHTML = "";
+
+                            for (var i = 1; i <= totalPages; i++) {
+                                var pageButton = document.createElement("button");
+                                pageButton.innerHTML = i;
+                                pageButton.addEventListener("click", function () {
+                                    currentPage = parseInt(this.innerHTML);
+                                    displayRows(currentPage);
+                                    updatePagination();
+                                });
+                                pagination.appendChild(pageButton);
+                            }
+                        }
+
+                        function updatePagination() {
+                            var buttons = document.getElementById("pagination").getElementsByTagName("button");
+                            for (var i = 0; i < buttons.length; i++) {
+                                if (parseInt(buttons[i].innerHTML) === currentPage) {
+                                    buttons[i].disabled = true;
+                                } else {
+                                    buttons[i].disabled = false;
+                                }
+                            }
+                        }
+
+                        displayRows(currentPage);
+                        createPagination();
+                        updatePagination();
+                    });
+
+
+                    let refreshInterval = 10; // Default refresh interval
+                    let autoRefreshInterval;
+
+                    function updateRefreshInterval(value) {
+                        refreshInterval = value;
+                        document.getElementById("intervalValue").innerText = value + " seconds";
+
+                        // Clear existing interval and set a new one
+                        if (autoRefreshInterval) {
+                            clearInterval(autoRefreshInterval);
+                        }
+
+                        // Set up auto-refresh
+                        autoRefreshInterval = setInterval(refreshData, value * 1000);
+                    }
+
+                    function refreshData() {
+                        // Call your backend endpoint to refresh data here
+                        fetch('/index')
+                                .then(response => response.json())
+                                .then(data => {
+                                    console.log('Data refreshed', data);
+                                    // Update your UI with the new data here
+                                })
+                                .catch(error => console.error('Error refreshing data:', error));
+                    }
+
+                    // Initialize auto-refresh on page load
+                    window.onload = function () {
+                        updateRefreshInterval(refreshInterval);
+                    }
+
+            </script>
+
+        </div>
+    }
